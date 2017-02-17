@@ -1,0 +1,30 @@
+Facebook:
+Major (concentration), degree, school, hometown, surname, location, employer, work-location, work-project (osition)
+
+
+Linkedin:
+Employer, location and college
+
+Dblp:
+
+Tasks:
+1) Multi label classification (binary vector): Say on school etc
+2) Clustering based on ego networks
+
+
+
+It should be better than not using them or trivially concatenating them in general tasks such as 
+multi-label classification & clustering. 
+
+Tasks:
+
+1) 
+
+
+3) The basic idea is to learn a projection matrix specific to each relation type. 
+What are some useful insights from these matrices? 
+	a) Given a pair of nodes, we can predict their most likely relationship type. Can possibly compare against individual versions of existing techniques. 
+
+Basic idea :
+
+
