@@ -12,6 +12,7 @@ for attribute in attributes:
 		i = 0
 		while i < len(lines):
 			user = lines[i]
+			user = int(user[1:len(user)])
 			i += 1
 			num_attrs = int(lines[i])
 			i +=1
@@ -34,21 +35,21 @@ with open('EgoNetUIUC-LinkedinCrawl-Network_20150101/network.txt') as f:
 	lines = f.read().splitlines()
 	for line in lines:
 		sp = line.split()
-		a = (sp[1])
-		b = (sp[2])
-		if b+" "+a not in edges:
-			edges.add(a+" "+b)
+		a = int(sp[1][1:len(sp[1])])
+		b = int(sp[2][1:len(sp[2])])
+		if str(b)+" "+str(a) not in edges:
+			edges.add(str(a)+" "+str(b))
 
 
 # Read network.
 count = 0
 for line in edges:
 	sp = line.split()
-	a = (sp[0])
-	b = (sp[1])
+	a = int(sp[0])
+	b = int(sp[1])
 	edge_attributes = []
 	if a not in user_attributes or b not in user_attributes:
-		network[a+" "+b] = []
+		network[str(a)+" "+str(b)] = []
 		continue
 
 	for attribute in user_attributes[a]:
@@ -59,13 +60,12 @@ for line in edges:
 			b_attr_values = set(user_attributes[b][attribute])
 		if len(a_attr_values & b_attr_values) > 0:
 			edge_attributes.append(attribute)
-	if b+" "+a not in network:
-		network[a+" "+b] = edge_attributes
-	if len(network[a+" "+b]) == 0:
+	if str(b)+" "+str(a) not in network:
+		network[str(a)+" "+str(b)] = edge_attributes
+	if len(network[str(a)+" "+str(b)]) == 0:
 		count += 1
 
 print count, len(edges)
-sys.exit(0)
 
 # Find number of links of each type
 attributes_count = {}
@@ -83,4 +83,13 @@ with open('user_attributes.txt', 'w') as outfile:
 	string = json.dumps(user_attributes, encoding='latin1')
 	outfile.write(string)
     #json.dump(user_attributes.decode('latin-1'), outfile)
+
+
+
+with open('network_edgelist.txt','w') as outfile:	
+	for edge in network:
+		a = edge.split()[0]
+		b = edge.split()[1]
+		outfile.write(str(a)+" "+str(b)+"\n")
+
 

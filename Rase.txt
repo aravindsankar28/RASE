@@ -18,7 +18,15 @@ multi-label classification & clustering.
 
 Tasks:
 
-1) 
+1) Multi label classification - Mask one attribute at a time and then ...
+	Classifier to predict.
+
+2) Clustering on Ego-networks - Facebook.
+
+3) Relationship type classification given a pair of nodes.
+
+
+Freebase 
 
 
 3) The basic idea is to learn a projection matrix specific to each relation type. 
