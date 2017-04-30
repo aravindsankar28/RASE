@@ -15,7 +15,7 @@ np.random.seed(0)
 flags = tf.app.flags
 
 flags.DEFINE_string("data_dir", 'Datasets/Linkedin', "data directory.")
-flags.DEFINE_integer("max_epoch", 10000, "max number of epochs.")
+flags.DEFINE_integer("max_epoch", 300, "max number of epochs.")
 flags.DEFINE_integer("emb_dim", 64, "embedding dimension.")
 flags.DEFINE_integer("batch_size_first", 1000, "batch size of edges in 1st")
 flags.DEFINE_integer("batch_size_second", 100, "batch size of edges in 2nd") # this is the # positive examples per batch
@@ -106,7 +106,7 @@ class RLINE(object):
                 edgeStr = str(self._idx2u[e[1]])+" "+str(self._idx2u[e[0]])
             relation_list = map(lambda x: self._rtoidx[x], network_dict[edgeStr])
             relations.append(relation_list)
-        return (edges, relation_list)
+        return (edges, relations)
 
     def _getDegreeDist(self):
         opts = self._options
@@ -119,7 +119,6 @@ class RLINE(object):
         degree_dist = [i/sum(degree_dist) for i in degree_dist]
         return degree_dist
         
-
     def buildGraph(self):
         opts = self._options
         U_batch = tf.placeholder(tf.int32,[opts.batch_size_first])
@@ -141,9 +140,17 @@ class RLINE(object):
         tvars = tf.trainable_variables()
         grads = tf.gradients(loss, tvars)
         optimizer = tf.train.AdamOptimizer(opts.lr).apply_gradients(zip(grads, tvars))
+
+        X_unlabled = tf.diag_part(tf.matmul(embeddings_U, tf.transpose(embeddings_V)))
+        loss_unlabeled = -1*tf.reduce_sum(tf.log(tf.nn.sigmoid(X_unlabled)))
+        optimizer_unlabeled = tf.train.AdamOptimizer(opts.lr).apply_gradients(zip(tf.gradients(loss_unlabeled, tf.trainable_variables()), tf.trainable_variables()))        
+
+
         self.embedding = embedding
         self.loss = loss
         self.optimizer = optimizer
+        self.optimizer_unlabeled = optimizer_unlabeled
+        self.loss_unlabeled = loss_unlabeled
         self.relation_labels = relation_labels
         self.U_batch = U_batch
         self.V_batch = V_batch
@@ -187,30 +194,11 @@ class RLINE(object):
         tf.global_variables_initializer().run()
         self.saver = tf.train.Saver()
 
-
-    # TODO --
-    def createBatchSecondOrder(self):
-        opts = self._options
-        edges_list = np.random.permutation(len(self._network))[0:opts.batch_size_second]
-        batch_edges = map(lambda x: self._network[x], edges_list)
-        labels = [1] * len(batch_edges)
-        batch_negative_edges = []
-        for e in batch_edges:
-            a = e[0]
-            b = e[1]
-            negative_nodes = np.random.choice(range(0, opts.num_nodes), opts.number_neg_samples, p=self._Pn)
-            for x in negative_nodes:
-                batch_negative_edges.append((a,x))
-        labels.extend([-1]* len(batch_negative_edges))
-        batch_edges.extend(batch_negative_edges)
-        # For now, return dummy stuff. 
-        rel_labels = [1]* len(batch_edges)
-        return (batch_edges , labels, rel_labels)
-
     def trainSecond(self):
         opts = self._options
         n_iter = 0    
-        (batch_edges , labels, rel_labels) = self.createBatchSecondOrder()
+        (batch_edges , labels, rel_labels) = self.createBatchLabeledSecond()
+        print (len(batch_edges))
         print ("Starting training")
         for _ in xrange(opts.max_epoch):
             train_U = map(lambda x : x[0],batch_edges)
@@ -221,7 +209,80 @@ class RLINE(object):
                 loss_second = self._session.run(self.loss_second, feed_dict={self.U_batch_second: train_U, self.V_batch_second: train_V, self.label_batch:labels, self.relation_labels:rel_labels})
                 print('step %d, loss=%f' % (n_iter, loss_second))
             if n_iter % opts.save_freq == 0:
-                self.saver.save(self._session, opts.save_path)
+                self.saver.save(self._session, opts.save_path)    
+
+    def createBatchUnlabeledSecond(self):
+        opts = self._options
+        edges_list = []
+        for i in range(0, len(self._network)):
+            if len(self._relations[i]) == 0:
+                edges_list.append(self._network[i])
+        random.shuffle(edges_list)
+        batch_edges = edges_list[0:opts.batch_size_second]
+        labels = [1] * len(batch_edges)
+        batch_negative_edges = []
+        for e in batch_edges:
+            a = e[0]
+            b = e[1]
+            negative_nodes = np.random.choice(range(0, opts.num_nodes), opts.number_neg_samples, p=self._Pn)
+            for x in negative_nodes:
+                if random.random() < 0.5:
+                    batch_negative_edges.append((a,x))
+                else:
+                    batch_negative_edges.append((b,x))
+        labels.extend([-1]* len(batch_negative_edges))
+        batch_edges.extend(batch_negative_edges)
+        return (batch_edges , labels)
+
+    def createBatchLabeledSecond(self):
+        # TOOD : incomplete
+        opts = self._options
+        indices = []
+        for i in range(0, len(self._network)):
+            if len(self._relations[i]) > 0:
+                indices.append(i)
+        random.shuffle(indices)
+        indices = indices[0:opts.batch_size_second]
+        batch_edges = map(lambda x: self._network[x], indices)
+        rel_labels = map(lambda x: random.choice(self._relations[x]), indices)
+        labels = [1]*len(batch_edges)
+        batch_negative_edges = []
+        for i in range(0, len(batch_edges)):
+            e = batch_edges[i]
+            rel_label = rel_labels[i]
+            a = e[0]
+            b = e[1]
+            negative_nodes = np.random.choice(range(0, opts.num_nodes), opts.number_neg_samples, p=self._Pn)
+            for x in negative_nodes:
+                batch_negative_edges.append((a,x))
+                rel_labels.append(rel_label)
+        labels.extend([-1]* len(batch_negative_edges))
+
+        batch_edges.extend(batch_negative_edges)
+        return (batch_edges , labels, rel_labels)
+
+    def createBatchUnlabeledFirst(self):
+        opts = self._options
+        edges_list = []
+        for i in range(0, len(self._network)):
+            if len(self._relations[i]) == 0:
+                edges_list.append(self._network[i])
+        random.shuffle(edges_list)
+        batch_edges = edges_list[0:opts.batch_size_first]
+        return batch_edges
+
+    # return edges and relation labels.
+    def createBatchLabeledFirst(self):
+        opts = self._options
+        indices = []
+        for i in range(0, len(self._network)):
+            if len(self._relations[i]) > 0:
+                indices.append(i)
+        random.shuffle(indices)
+        indices = indices[0:opts.batch_size_first]
+        batch_edges = map(lambda x: self._network[x], indices)
+        labels = map(lambda x: random.choice(self._relations[x]), indices)
+        return (batch_edges, labels)
 
     def trainFirst(self):
         opts = self._options
@@ -229,18 +290,25 @@ class RLINE(object):
         print ("Starting training")
         rel_labels= np.array([1]* opts.batch_size_first) # TODO : need to fix - dummy for now.
         for _ in xrange(opts.max_epoch):
-            # Cannot sample arbitrarily here -- TODO
-            edges_list = np.random.permutation(len(self._network))[0:opts.batch_size_first]
-            batch_edges = map(lambda x: self._network[x], edges_list)
-            train_U = map(lambda x : x[0],batch_edges)
-            train_V = map(lambda x : x[1],batch_edges)
-            self._session.run(self.optimizer, feed_dict={self.U_batch: train_U, self.V_batch: train_V, self.relation_labels: rel_labels})
+            if random.random() < 0.5:
+                (batch_edges, rel_labels) = self.createBatchLabeledFirst()
+                train_U_labeled = map(lambda x : x[0],batch_edges)
+                train_V_labeled = map(lambda x : x[1],batch_edges)
+                self._session.run(self.optimizer, feed_dict={self.U_batch: train_U_labeled, self.V_batch: train_V_labeled, self.relation_labels: rel_labels})
+            else:
+                batch_edges = self.createBatchUnlabeledFirst()
+                train_U_unlabeled = map(lambda x : x[0],batch_edges)
+                train_V_unlabeled = map(lambda x : x[1],batch_edges)
+                self._session.run(self.optimizer_unlabeled, feed_dict={self.U_batch: train_U_unlabeled, self.V_batch: train_V_unlabeled})           
             n_iter += 1
             if n_iter % opts.disp_freq == 0:
-                loss = self._session.run(self.loss, feed_dict={self.U_batch: train_U, self.V_batch: train_V, self.relation_labels: rel_labels})
-                print('step %d, loss=%f' % (n_iter, loss))
+                loss_unlabeled = self._session.run(self.loss_unlabeled, feed_dict={self.U_batch: train_U_unlabeled, self.V_batch: train_V_unlabeled})
+                loss_labeled = self._session.run(self.loss, feed_dict={self.U_batch: train_U_labeled, self.V_batch: train_V_labeled, self.relation_labels: rel_labels})                
+                print('step %d, loss_label =%f  loss_unlabeled=%f' % (n_iter, loss_labeled, loss_unlabeled))
             if n_iter % opts.save_freq == 0:
                 self.saver.save(self._session, opts.save_path)
+        current_embedddings = self._session.run(self.embedding)
+        print (current_embedddings.shape)
 
 def main(_):
     options = Options()

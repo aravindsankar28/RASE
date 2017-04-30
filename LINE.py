@@ -14,7 +14,7 @@ np.random.seed(0)
 flags = tf.app.flags
 
 flags.DEFINE_string("data_dir", 'Datasets/Linkedin', "data directory.")
-flags.DEFINE_integer("max_epoch", 10000, "max number of epochs.")
+flags.DEFINE_integer("max_epoch", 4000, "max number of epochs.")
 flags.DEFINE_integer("emb_dim", 64, "embedding dimension.")
 flags.DEFINE_integer("batch_size_first", 1000, "batch size of edges in 1st")
 flags.DEFINE_integer("batch_size_second", 100, "batch size of edges in 2nd") # this is the # positive examples per batch
@@ -151,7 +151,10 @@ class LINE(object):
             b = e[1]
             negative_nodes = np.random.choice(range(0, opts.num_nodes), opts.number_neg_samples, p=self._Pn)
             for x in negative_nodes:
-                batch_negative_edges.append((a,x))
+                if random.random() < 0.5:
+                    batch_negative_edges.append((a,x))
+                else:
+                    batch_negative_edges.append((b,x))
         labels.extend([-1]* len(batch_negative_edges))
         batch_edges.extend(batch_negative_edges)
         return (batch_edges , labels)
@@ -171,6 +174,8 @@ class LINE(object):
                 print('step %d, loss=%f' % (n_iter, loss_second))
             if n_iter % opts.save_freq == 0:
                 self.saver.save(self._session, opts.save_path)
+        current_embedddings = self._session.run(self.embedding_target)
+        return current_embedddings
 
     def trainFirst(self):
         opts = self._options
@@ -189,14 +194,26 @@ class LINE(object):
                 print('step %d, loss=%f' % (n_iter, loss))
             if n_iter % opts.save_freq == 0:
                 self.saver.save(self._session, opts.save_path)
+        current_embedddings = self._session.run(self.embedding)
+        return current_embedddings
+        #print (current_embedddings.shape)
 
 def main(_):
     options = Options()
     with tf.Graph().as_default(), tf.Session() as session:
         model = LINE(options, session)
         if FLAGS.train:
-            model.trainSecond()
-            #model.trainFirst()
+            emb_first = model.trainFirst()
+            emb_second = model.trainSecond()
+            f = open('linkedin.LINE.emb.txt', 'w')
+            for i in range(0, self._options.num_nodes):
+                f.write(str(self._idx2u[i])+" ")
+                for j in range(0, self._options.emb_dim):
+                    f.write(str(emb_first[i][j])+" ")
+                for j in range(0, self._options.emb_dim):
+                    f.write(str(emb_second[i][j])+" ")
+                f.write("\n")
+            f.close()
 
 if __name__ == "__main__":
     tf.app.run()
