@@ -61,6 +61,7 @@ class LINE(object):
     def _readFromFile(self, filename):
         edges = []
         nodeCounter = 0
+        adj = {}
         for line in open(filename):
             a = int(line.split()[0])
             b = int(line.split()[1])
@@ -74,11 +75,27 @@ class LINE(object):
                 nodeCounter += 1
             a = self._u2idx[a]
             b = self._u2idx[b]
+            if a not in adj:
+                adj[a] = []
+            if b not in adj:
+                adj[b] = []
+            adj[a].append(b)
+            adj[b].append(a)
             if a<b :
                 edges.append((a,b))
             else:
                 edges.append((b,a))
+        print ("edges = ", len(edges))
+        for i in range(0, len(self._u2idx)):
+            for j in adj[i]:
+                for k in adj[j]:
+                    if k < i :
+                        edges.append((i,k))
+                    else:
+                        edges.append((k,i))
+
         edges = list(set(edges))
+        print("edges after densify = ", len(edges))
         return edges
 
     def _getDegreeDist(self):

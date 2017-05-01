@@ -24,7 +24,8 @@ public class NegSampler {
 
 		while ((line = br.readLine()) != null) {
 			int a = Integer.parseInt(line.split(" ")[0]);
-			int b = Integer.parseInt(line.split(" ")[0]);
+			int b = Integer.parseInt(line.split(" ")[1]);
+
 			if (!u2idx.containsKey(a)) {
 				u2idx.put(a, nodeCounter);
 				idx2u.put(nodeCounter, a);
@@ -46,9 +47,13 @@ public class NegSampler {
 				edges.add(b + " " + a);
 		}
 		br.close();
-		Set<String> s = new HashSet(edges);
-		edges = new ArrayList(s);
+		// System.out.println(edges);
+		System.out.println(edges.size());
+		Set<String> s = new HashSet<String>(edges);
+		System.out.println(s.size());
+		edges = new ArrayList<String>(s);
 		numNodes = u2idx.size();
+		System.out.println(edges.size());
 	}
 
 	double[] getDegreeDist() {
@@ -70,7 +75,6 @@ public class NegSampler {
 		for (int i = 0; i < numNodes; i++) {
 			degDist[i] /= sum;
 		}
-
 		return degDist;
 	}
 
@@ -79,8 +83,8 @@ public class NegSampler {
 		List<Double> degDist = new ArrayList();
 		for (int i = 0; i < numNodes; i++)
 			degDist.add(degreeDist[i]);
+		// System.out.println(degDist);
 		AliasMethod am = new AliasMethod(degDist);
-
 		BufferedWriter bw = new BufferedWriter(new FileWriter(fileName));
 		ArrayList<Integer> tempList = new ArrayList<>();
 		for (int i = 0; i < numNodes; i++)
@@ -117,8 +121,11 @@ public class NegSampler {
 					}
 				}
 			}
+
 			for (int i = 0; i < edges_batch.length; i++) {
-				bw.write(edges_batch[i].split(" ")[0] + "," + edges_batch[i].split(" ")[1] + "," + labels_batch[i]
+				int s = idx2u.get(Integer.parseInt(edges_batch[i].split(" ")[0]));
+				int t = idx2u.get(Integer.parseInt(edges_batch[i].split(" ")[1]));
+				bw.write(s + "," + t + "," + labels_batch[i]
 						+ "\n");
 				// bw.write(edges_batch[i] + " " + labels_batch[i] + "\n");
 			}
@@ -141,8 +148,9 @@ public class NegSampler {
 		NegSampler ns = new NegSampler();
 		ns.readGraph(fileName);
 		ns.degreeDist = ns.getDegreeDist();
+		System.out.println(ns.edges.size());
 
-		ns.outputSamples(numBatches, batchSize, negSamplesPerBatch, "out.txt");
+		ns.outputSamples(numBatches, batchSize, negSamplesPerBatch, "../../Batches_2nd.txt");
 	}
 
 }
