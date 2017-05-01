@@ -37,7 +37,6 @@ public class NegSampler {
 				idx2u.put(nodeCounter, b);
 				nodeCounter += 1;
 			}
-
 			a = u2idx.get(a);
 			b = u2idx.get(b);
 
@@ -47,7 +46,6 @@ public class NegSampler {
 				edges.add(b + " " + a);
 		}
 		br.close();
-		// System.out.println(edges);
 		System.out.println(edges.size());
 		Set<String> s = new HashSet<String>(edges);
 		System.out.println(s.size());
@@ -110,23 +108,20 @@ public class NegSampler {
 
 				for (int j = 0; j < negSamplesPerBatch; j++) {
 					int neg_node = am.next();
-					if (random.nextFloat() < 0.5) {
-						labels_batch[ctr] += -1;
+					if (random.nextFloat() < 0.5)
 						edges_batch[ctr] = x + " " + neg_node;
-						ctr += 1;
-					} else {
-						labels_batch[ctr] += -1;
+					else
 						edges_batch[ctr] = y + " " + neg_node;
-						ctr += 1;
-					}
+					
+					labels_batch[ctr] = -1;
+					ctr += 1;
 				}
 			}
 
 			for (int i = 0; i < edges_batch.length; i++) {
 				int s = idx2u.get(Integer.parseInt(edges_batch[i].split(" ")[0]));
 				int t = idx2u.get(Integer.parseInt(edges_batch[i].split(" ")[1]));
-				bw.write(s + "," + t + "," + labels_batch[i]
-						+ "\n");
+				bw.write(s + "," + t + "," + labels_batch[i] + "\n");
 				// bw.write(edges_batch[i] + " " + labels_batch[i] + "\n");
 			}
 			// bw.write("\n");
@@ -139,7 +134,7 @@ public class NegSampler {
 		String fileName = args[0];
 		int batchSize = Integer.parseInt(args[1]);
 		int negSamplesPerBatch = Integer.parseInt(args[2]);
-		int numBatches =  Integer.parseInt(args[3]);
+		int numBatches = Integer.parseInt(args[3]);
 		// String fileName =
 		// "/Users/aravind/Desktop/RASE/Datasets/Linkedin/network_edgelist.txt";
 		// int batchSize = 100;

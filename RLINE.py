@@ -15,13 +15,13 @@ np.random.seed(0)
 flags = tf.app.flags
 
 flags.DEFINE_string("data_dir", 'Datasets/Linkedin', "data directory.")
-flags.DEFINE_integer("max_epoch", 300, "max number of epochs.")
-flags.DEFINE_integer("emb_dim", 64, "embedding dimension.")
-flags.DEFINE_integer("batch_size_first", 1000, "batch size of edges in 1st")
+flags.DEFINE_integer("max_epoch", 2000, "max number of epochs.")
+flags.DEFINE_integer("emb_dim", 128, "embedding dimension.")
+flags.DEFINE_integer("batch_size_first", 1500, "batch size of edges in 1st")
 flags.DEFINE_integer("batch_size_second", 100, "batch size of edges in 2nd") # this is the # positive examples per batch
-flags.DEFINE_integer("relation_matrix_dim", 10, "relation matrix dimension")
+flags.DEFINE_integer("relation_matrix_dim", 64, "relation matrix dimension")
 
-
+flags.DEFINE_integer("order", 1, "frequency to output.")
 flags.DEFINE_integer("disp_freq", 100, "frequency to output.")
 flags.DEFINE_integer("save_freq", 10000, "frequency to save.")
 flags.DEFINE_float("lr", 0.01, "initial learning rate.")
@@ -36,6 +36,7 @@ class Options(object):
     def __init__(self):
         # model options.
         self.emb_dim = FLAGS.emb_dim
+        self.order = FLAGS.order
         self.batch_size_first = FLAGS.batch_size_first
         self.batch_size_second = FLAGS.batch_size_second
         self.relation_matrix_dim = FLAGS.relation_matrix_dim
@@ -61,10 +62,28 @@ class RLINE(object):
         self._options.num_nodes = len(self._u2idx)
         self._options.num_relations = len(self._rtoidx)
         self._Pn = self._getDegreeDist() # This is actually d_v ^(0.75)
+        self._line_embs = self._readInitialEmb("linkedin.LINE.emb.txt").astype(np.float32)
         self.buildGraph()
         self.buildGraphSecond()
+
         if options.reload_model:
             self.saver.restore(session, options.save_path)
+
+    def _readInitialEmb(self, filename):
+        user_embeddings = {}
+        initialEmbs = []
+        with open(filename) as f:
+            lines = f.read().splitlines()
+            for l in lines:
+                split_line = l.split()
+                user = int(split_line[0])
+                idx = self._u2idx[user]
+                emb = map(lambda x : float(x) , split_line[1:len(split_line)])
+                user_embeddings[idx] = emb
+        for i in range(0, self._options.num_nodes):
+            initialEmbs.append(user_embeddings[i])
+        return np.array(initialEmbs)
+
 
     def _readFromFile(self, filename):
         edges = []
@@ -124,8 +143,9 @@ class RLINE(object):
         U_batch = tf.placeholder(tf.int32,[opts.batch_size_first])
         V_batch = tf.placeholder(tf.int32,[opts.batch_size_first])
         relation_labels = tf.placeholder(tf.int32, [opts.batch_size_first]) # relation labels
-        embedding = tf.Variable(tf.random_uniform([opts.num_nodes, opts.emb_dim], -0.1, 0.1), name="embedding")
-        R_matrices = tf.Variable(tf.random_uniform([opts.num_relations, opts.relation_matrix_dim, opts.emb_dim], -0.1, 0.1), name="r_matrices")
+        embedding = tf.Variable(self._line_embs, name = "embedding")
+        #embedding = tf.Variable(tf.random_uniform([opts.num_nodes, opts.emb_dim], -0.1, 0.1), name="embedding")
+        R_matrices = tf.Variable(tf.random_uniform([opts.num_relations, opts.relation_matrix_dim, opts.emb_dim], -1, 1), name="r_matrices")
         embeddings_U = tf.nn.embedding_lookup(embedding, U_batch)
         embeddings_V = tf.nn.embedding_lookup(embedding, V_batch)
         R_matrix = tf.nn.embedding_lookup(R_matrices, relation_labels)
@@ -145,7 +165,7 @@ class RLINE(object):
         loss_unlabeled = -1*tf.reduce_sum(tf.log(tf.nn.sigmoid(X_unlabled)))
         optimizer_unlabeled = tf.train.AdamOptimizer(opts.lr).apply_gradients(zip(tf.gradients(loss_unlabeled, tf.trainable_variables()), tf.trainable_variables()))        
 
-
+        self.R_matrices = R_matrices
         self.embedding = embedding
         self.loss = loss
         self.optimizer = optimizer
@@ -308,15 +328,46 @@ class RLINE(object):
             if n_iter % opts.save_freq == 0:
                 self.saver.save(self._session, opts.save_path)
         current_embedddings = self._session.run(self.embedding)
-        print (current_embedddings.shape)
+        R_matrices = self._session.run(self.R_matrices)
+        r = current_embedddings
+        r = np.matmul(current_embedddings, np.transpose(R_matrices[0]))
+        # print (r.shape)
+        # for i in range(0, opts.num_relations):
+        #     emb_r = np.matmul(current_embedddings, np.transpose(R_matrices[i]))
+        #     print (emb_r.shape)
+        #     r = np.concatenate((r, emb_r), axis=1)
+        #     print(emb_r.shape, r.shape)
+        # print(r.shape)
+        # #return current_embedddings
+        return r
 
 def main(_):
     options = Options()
     with tf.Graph().as_default(), tf.Session() as session:
         model = RLINE(options, session)
         if FLAGS.train:
-            #model.trainSecond()
-            model.trainFirst()
+            if FLAGS.order == 1:
+                emb_first = model.trainFirst()
+                emb = emb_first
+            elif FLAGS.order == 2:
+                batches_2nd_order = []
+                #batches_2nd_order = model.readBatches()
+                emb_second = model.trainSecond(batches_2nd_order)
+                emb = emb_second
+            else:
+                emb_first = model.trainFirst()
+                batches_2nd_order = []
+                #batches_2nd_order = model.readBatches()
+                emb_second = model.trainSecond(batches_2nd_order)
+                emb = np.concatenate((emb_first, emb_second), axis=1)
+
+            f = open('linkedin.RLINE.emb.txt', 'w')
+            for i in range(0, options.num_nodes):
+                f.write(str(model._idx2u[i])+" ")
+                for j in range(0, len(emb[i])):
+                    f.write(str(emb[i][j])+" ")
+                f.write("\n")
+            f.close()
 
 if __name__ == "__main__":
     tf.app.run()

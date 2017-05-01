@@ -13,14 +13,16 @@ np.random.seed(0)
 flags = tf.app.flags
 
 flags.DEFINE_string("data_dir", 'Datasets/Linkedin', "data directory.")
-flags.DEFINE_integer("max_epoch", 5000, "max number of epochs.")
+flags.DEFINE_integer("max_epoch", 2000, "max number of epochs.")
 flags.DEFINE_integer("emb_dim", 128, "embedding dimension.")
-flags.DEFINE_integer("batch_size_first", 1000, "batch size of edges in 1st")
+flags.DEFINE_integer("batch_size_first", 2000, "batch size of edges in 1st")
 flags.DEFINE_integer("batch_size_second", 100, "batch size of edges in 2nd") # this is the # positive examples per batch
+flags.DEFINE_integer("order", 1, "proximity to use") # if 3, use both.
+
 
 flags.DEFINE_integer("disp_freq", 100, "frequency to output.")
 flags.DEFINE_integer("save_freq", 10000, "frequency to save.")
-flags.DEFINE_float("lr", 0.01, "initial learning rate.")
+flags.DEFINE_float("lr", 0.025, "initial learning rate.")
 flags.DEFINE_float("number_neg_samples", 5, "# of negative samples per positive example")
 flags.DEFINE_boolean("reload_model", 0, "whether to reuse saved model.") # Note : this is for saved model
 flags.DEFINE_boolean("train", 1, "whether to train model.")
@@ -32,6 +34,7 @@ class Options(object):
     def __init__(self):
         # model options.
         self.emb_dim = FLAGS.emb_dim
+        self.order = FLAGS.order
         self.batch_size_first = FLAGS.batch_size_first
         self.batch_size_second = FLAGS.batch_size_second
         self.network_file = os.path.join(FLAGS.data_dir, 'network_edgelist.txt')
@@ -86,13 +89,13 @@ class LINE(object):
             else:
                 edges.append((b,a))
         print ("edges = ", len(edges))
-        for i in range(0, len(self._u2idx)):
-            for j in adj[i]:
-                for k in adj[j]:
-                    if k < i :
-                        edges.append((i,k))
-                    else:
-                        edges.append((k,i))
+        # for i in range(0, len(self._u2idx)):
+        #     for j in adj[i]:
+        #         for k in adj[j]:
+        #             if k < i :
+        #                 edges.append((i,k))
+        #             else:
+        #                 edges.append((k,i))
 
         edges = list(set(edges))
         print("edges after densify = ", len(edges))
@@ -180,8 +183,8 @@ class LINE(object):
         print ("Starting training")
         for epoch in xrange(opts.max_epoch):
             #print ("Creating batch")
-            (batch_edges , labels) = batches_2nd_order[epoch]
-            #(batch_edges , labels) = self.createBatchSecondOrder()
+            #(batch_edges , labels) = batches_2nd_order[epoch]
+            (batch_edges , labels) = self.createBatchSecondOrder()
             #print ("Created batch")
             train_U = map(lambda x : x[0],batch_edges)
             train_V = map(lambda x : x[1],batch_edges)
@@ -247,18 +250,26 @@ def main(_):
     with tf.Graph().as_default(), tf.Session() as session:
         model = LINE(options, session)
         if FLAGS.train:
-            #emb_first = model.trainFirst()
-            batches_2nd_order = []
-            batches_2nd_order = model.readBatches()
-            #sys.exit(0)
-            emb_second = model.trainSecond(batches_2nd_order)
+            if FLAGS.order == 1:
+                emb_first = model.trainFirst()
+                emb = emb_first
+            elif FLAGS.order == 2:
+                batches_2nd_order = []
+                #batches_2nd_order = model.readBatches()
+                emb_second = model.trainSecond(batches_2nd_order)
+                emb = emb_second
+            else:
+                emb_first = model.trainFirst()
+                batches_2nd_order = []
+                #batches_2nd_order = model.readBatches()
+                emb_second = model.trainSecond(batches_2nd_order)
+                emb = np.concatenate((emb_first, emb_second), axis=1)
+
             f = open('linkedin.LINE.emb.txt', 'w')
             for i in range(0, options.num_nodes):
                 f.write(str(model._idx2u[i])+" ")
-                #for j in range(0, options.emb_dim):
-                #    f.write(str(emb_first[i][j])+" ")
-                for j in range(0, options.emb_dim):
-                    f.write(str(emb_second[i][j])+" ")
+                for j in range(0, len(emb[i])):
+                    f.write(str(emb[i][j])+" ")
                 f.write("\n")
             f.close()
 
