@@ -10,12 +10,11 @@ import copy
 import math
 random.seed(0)
 np.random.seed(0)
-
 flags = tf.app.flags
 
 flags.DEFINE_string("data_dir", 'Datasets/Linkedin', "data directory.")
-flags.DEFINE_integer("max_epoch", 4000, "max number of epochs.")
-flags.DEFINE_integer("emb_dim", 64, "embedding dimension.")
+flags.DEFINE_integer("max_epoch", 5000, "max number of epochs.")
+flags.DEFINE_integer("emb_dim", 128, "embedding dimension.")
 flags.DEFINE_integer("batch_size_first", 1000, "batch size of edges in 1st")
 flags.DEFINE_integer("batch_size_second", 100, "batch size of edges in 2nd") # this is the # positive examples per batch
 
@@ -91,8 +90,7 @@ class LINE(object):
         for i in range(0, opts.num_nodes):
             degree_dist[i] = math.pow(degree_dist[i], 0.75)
         degree_dist = [i/sum(degree_dist) for i in degree_dist]
-        return degree_dist
-        
+        return degree_dist   
 
     def buildGraph(self):
         opts = self._options
@@ -159,12 +157,15 @@ class LINE(object):
         batch_edges.extend(batch_negative_edges)
         return (batch_edges , labels)
 
-    def trainSecond(self):
+    def trainSecond(self, batches_2nd_order):
         opts = self._options
         n_iter = 0        
         print ("Starting training")
-        for _ in xrange(opts.max_epoch):
-            (batch_edges , labels) = self.createBatchSecondOrder()
+        for epoch in xrange(opts.max_epoch):
+            #print ("Creating batch")
+            (batch_edges , labels) = batches_2nd_order[epoch]
+            #(batch_edges , labels) = self.createBatchSecondOrder()
+            #print ("Created batch")
             train_U = map(lambda x : x[0],batch_edges)
             train_V = map(lambda x : x[1],batch_edges)
             self._session.run(self.optimizer_second, feed_dict={self.U_batch_second: train_U, self.V_batch_second: train_V, self.label_batch: labels})
@@ -197,20 +198,49 @@ class LINE(object):
         current_embedddings = self._session.run(self.embedding)
         return current_embedddings
         #print (current_embedddings.shape)
+    def readBatches(self):
+        batches_2nd_order = {}
+        f = open('batches_2nd.txt','r')
+        i = 0
+        ctr = 0
+        batch_edges = []
+        batch_labels = []
+        for line in f:
+            line = line.split("\n")[0]
+            a = int(line.split(",")[0])
+            b = int(line.split(",")[1])
+            label = int(line.split(",")[2])
+            i += 1
+            batch_edges.append((a,b))
+            batch_labels.append(label)
+            if i % (self._options.batch_size_second*(1+self._options.number_neg_samples)) == 0:
+                batches_2nd_order[ctr] = (batch_edges, batch_labels)
+                batch_edges = []
+                batch_labels = []
+                print (len(batches_2nd_order), len(batches_2nd_order[ctr][0]))
+                ctr += 1
+            if ctr == self._options.max_epoch:
+                break
+        f.close()
+        return batches_2nd_order
+        
 
 def main(_):
     options = Options()
     with tf.Graph().as_default(), tf.Session() as session:
         model = LINE(options, session)
         if FLAGS.train:
-            emb_first = model.trainFirst()
-            emb_second = model.trainSecond()
+            #emb_first = model.trainFirst()
+            batches_2nd_order = []
+            batches_2nd_order = model.readBatches()
+            #sys.exit(0)
+            emb_second = model.trainSecond(batches_2nd_order)
             f = open('linkedin.LINE.emb.txt', 'w')
-            for i in range(0, self._options.num_nodes):
-                f.write(str(self._idx2u[i])+" ")
-                for j in range(0, self._options.emb_dim):
-                    f.write(str(emb_first[i][j])+" ")
-                for j in range(0, self._options.emb_dim):
+            for i in range(0, options.num_nodes):
+                f.write(str(model._idx2u[i])+" ")
+                #for j in range(0, options.emb_dim):
+                #    f.write(str(emb_first[i][j])+" ")
+                for j in range(0, options.emb_dim):
                     f.write(str(emb_second[i][j])+" ")
                 f.write("\n")
             f.close()
