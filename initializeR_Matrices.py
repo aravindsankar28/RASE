@@ -63,7 +63,7 @@ class RLINE(object):
         self._options.num_nodes = len(self._u2idx)
         self._options.num_relations = len(self._rtoidx)
         self._Pn = self._getDegreeDist() # This is actually d_v ^(0.75)
-        self._line_embs = self._readInitialEmb("linkedin.LINE.emb.txt").astype(np.float32)
+        self._line_embs = self._readInitialEmb("linkedin.deepwalk.emb.txt").astype(np.float32)
         self.buildGraph()
         self.buildGraphSecond()
         self.regressionInitRMatrix()

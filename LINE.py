@@ -8,22 +8,23 @@ import tensorflow as tf
 import numpy as np
 import copy
 import math
+import operator
 random.seed(0)
 np.random.seed(0)
 flags = tf.app.flags
 
 flags.DEFINE_string("data_dir", 'Datasets/Linkedin', "data directory.")
-flags.DEFINE_integer("max_epoch", 4000, "max number of epochs.")
+flags.DEFINE_integer("max_epoch", 5000, "max number of epochs.")
 flags.DEFINE_integer("emb_dim", 128, "embedding dimension.")
 flags.DEFINE_integer("batch_size_first", 2000, "batch size of edges in 1st")
-flags.DEFINE_integer("batch_size_second", 1000, "batch size of edges in 2nd") # this is the # positive examples per batch
+flags.DEFINE_integer("batch_size_second", 500, "batch size of edges in 2nd") # this is the # positive examples per batch
 flags.DEFINE_integer("order", 2, "proximity to use") # if 3, use both.
 
 
 flags.DEFINE_integer("disp_freq", 100, "frequency to output.")
 flags.DEFINE_integer("save_freq", 10000, "frequency to save.")
 flags.DEFINE_float("lr", 0.01, "initial learning rate.")
-flags.DEFINE_float("number_neg_samples", 1, "# of negative samples per positive example")
+flags.DEFINE_float("number_neg_samples", 5, "# of negative samples per positive example")
 flags.DEFINE_boolean("reload_model", 0, "whether to reuse saved model.") # Note : this is for saved model
 flags.DEFINE_boolean("train", 1, "whether to train model.")
 
@@ -89,14 +90,19 @@ class LINE(object):
             else:
                 edges.append((b,a))
         print ("edges = ", len(edges))
-        # for i in range(0, len(self._u2idx)):
-        #     for j in adj[i]:
-        #         for k in adj[j]:
-        #             if k < i :
-        #                 edges.append((i,k))
-        #             else:
-        #                 edges.append((k,i))
-
+        #node_Degree = {}
+        #for i in range(0, len(self._u2idx)):
+        #    node_Degree[i] = len(adj[i])
+        #deg_sorted = sorted(node_Degree.items(), key = operator.itemgetter(1), reverse = True)
+        #print (deg_sorted[0:int(0.2* len(self._u2idx))])
+        for i in range(0, len(self._u2idx)):
+            if len(adj[i]) < 10:
+                for j in adj[i]:
+                    for k in adj[j]:
+                        if k < i :
+                            edges.append((i,k))
+                        else:
+                            edges.append((k,i))
         edges = list(set(edges))
         print("edges after densify = ", len(edges))
         return edges
@@ -220,7 +226,7 @@ class LINE(object):
         #print (current_embedddings.shape)
     def readBatches(self):
         batches_2nd_order = {}
-        f = open('batches_2nd.txt','r')
+        f = open('Batches_2nd.txt','r')
         i = 0
         ctr = 0
         batch_edges = []
@@ -229,6 +235,8 @@ class LINE(object):
             line = line.split("\n")[0]
             a = int(line.split(",")[0])
             b = int(line.split(",")[1])
+            a = self._u2idx[a]
+            b = self._u2idx[b]
             label = int(line.split(",")[2])
             i += 1
             batch_edges.append((a,b))

@@ -17,7 +17,7 @@ public class NegSampler {
 		edges = new ArrayList<>();
 		u2idx = new HashMap<>();
 		idx2u = new HashMap<>();
-
+		HashMap<Integer, ArrayList<Integer>> adj = new HashMap<>();
 		BufferedReader br = new BufferedReader(new FileReader(fileName));
 		String line = "";
 		int nodeCounter = 0;
@@ -39,13 +39,39 @@ public class NegSampler {
 			}
 			a = u2idx.get(a);
 			b = u2idx.get(b);
+			
+			if(! adj.containsKey(a))
+				adj.put(a, new ArrayList());
 
+			if(! adj.containsKey(b))
+				adj.put(b, new ArrayList());
+			adj.get(a).add(b);
+			adj.get(b).add(a);
+			
 			if (a < b) {
 				edges.add(a + " " + b);
 			} else
 				edges.add(b + " " + a);
 		}
 		br.close();
+		for(int i = 0 ; i < u2idx.size() ; i ++)
+		{
+			if(adj.get(i).size() < 10)
+			{
+				for(int j : adj.get(i))
+				{
+					for(int k : adj.get(j))
+					{
+						if (k < i)
+							edges.add(i+" "+k);
+						else
+							edges.add(k+" "+i);
+					}
+				}
+			}
+		}
+
+		
 		System.out.println(edges.size());
 		Set<String> s = new HashSet<String>(edges);
 		System.out.println(s.size());

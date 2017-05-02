@@ -9,22 +9,23 @@ import numpy as np
 import copy
 import math
 import json
+import pickle
 random.seed(0)
 np.random.seed(0)
 
 flags = tf.app.flags
 
 flags.DEFINE_string("data_dir", 'Datasets/Linkedin', "data directory.")
-flags.DEFINE_integer("max_epoch", 2000, "max number of epochs.")
+flags.DEFINE_integer("max_epoch", 5000, "max number of epochs.")
 flags.DEFINE_integer("emb_dim", 128, "embedding dimension.")
-flags.DEFINE_integer("batch_size_first", 1500, "batch size of edges in 1st")
+flags.DEFINE_integer("batch_size_first", 1000, "batch size of edges in 1st")
 flags.DEFINE_integer("batch_size_second", 100, "batch size of edges in 2nd") # this is the # positive examples per batch
-flags.DEFINE_integer("relation_matrix_dim", 64, "relation matrix dimension")
+flags.DEFINE_integer("relation_matrix_dim", 128, "relation matrix dimension")
 
 flags.DEFINE_integer("order", 1, "frequency to output.")
 flags.DEFINE_integer("disp_freq", 100, "frequency to output.")
 flags.DEFINE_integer("save_freq", 10000, "frequency to save.")
-flags.DEFINE_float("lr", 0.01, "initial learning rate.")
+flags.DEFINE_float("lr", 0.005, "initial learning rate.")
 flags.DEFINE_float("number_neg_samples", 5, "# of negative samples per positive example")
 flags.DEFINE_boolean("reload_model", 0, "whether to reuse saved model.") # Note : this is for saved model
 flags.DEFINE_boolean("train", 1, "whether to train model.")
@@ -63,6 +64,7 @@ class RLINE(object):
         self._options.num_relations = len(self._rtoidx)
         self._Pn = self._getDegreeDist() # This is actually d_v ^(0.75)
         self._line_embs = self._readInitialEmb("linkedin.deepwalk.emb.txt").astype(np.float32)
+        self.inital_R_matrices = pickle.load( open( "R_matrices.p", "rb" ) ).astype(np.float32)
         self.buildGraph()
         self.buildGraphSecond()
 
@@ -144,7 +146,8 @@ class RLINE(object):
         relation_labels = tf.placeholder(tf.int32, [opts.batch_size_first]) # relation labels
         embedding = tf.Variable(self._line_embs, name = "embedding")
         #embedding = tf.Variable(tf.random_uniform([opts.num_nodes, opts.emb_dim], -0.1, 0.1), name="embedding")
-        R_matrices = tf.Variable(tf.random_uniform([opts.num_relations, opts.relation_matrix_dim, opts.emb_dim], -0.1, 0.1), name="r_matrices")
+        R_matrices = tf.Variable(self.inital_R_matrices, name = "R_matrices")
+        #R_matrices = tf.Variable(tf.random_uniform([opts.num_relations, opts.relation_matrix_dim, opts.emb_dim], -0.1, 0.1), name="r_matrices")
         embeddings_U = tf.nn.embedding_lookup(embedding, U_batch)
         embeddings_V = tf.nn.embedding_lookup(embedding, V_batch)
         R_matrix = tf.nn.embedding_lookup(R_matrices, relation_labels)
@@ -153,7 +156,7 @@ class RLINE(object):
         
         embeddings_U_projected = tf.reduce_sum(embeddings_U_projected, 2)
         embeddings_V_projected = tf.reduce_sum(embeddings_V_projected, 2)
-        print (embeddings_U.shape, embeddings_U_projected.shape)
+        #print (embeddings_U.shape, embeddings_U_projected.shape)
         X = tf.diag_part(tf.matmul(embeddings_U_projected, tf.transpose(embeddings_V_projected)))
         loss = -1*tf.reduce_sum(tf.log(tf.nn.sigmoid(X)))
         tvars = tf.trainable_variables()
@@ -194,8 +197,10 @@ class RLINE(object):
         embeddings_V_projected = tf.matmul(R_matrix, tf.expand_dims(embeddings_V,2))
         embeddings_U_projected = tf.reduce_sum(embeddings_U_projected, 2)
         embeddings_V_projected = tf.reduce_sum(embeddings_V_projected, 2)
-
-        print (embeddings_U.shape, embeddings_U_projected.shape)
+        #print (R_matrix.shape)
+        #print (tf.expand_dims(embeddings_U,2).shape)
+        #print (embeddings_U_projected.shape)
+        #print (embeddings_U.shape, embeddings_U_projected.shape)
         X = tf.multiply(label_batch, tf.diag_part(tf.matmul(embeddings_U_projected, tf.transpose(embeddings_V_projected))))
         loss_second = -1*tf.reduce_sum(tf.log(tf.nn.sigmoid(X)))
         #optimizer = tf.train.GradientDescentOptimizer(opts.lr).minimize(loss)
@@ -331,13 +336,15 @@ class RLINE(object):
         #r = current_embedddings
         #r = np.matmul(current_embedddings, np.transpose(R_matrices[0]))
         # print (r.shape)
-        # for i in range(0, opts.num_relations):
-        #     emb_r = np.matmul(current_embedddings, np.transpose(R_matrices[i]))
-        #     print (emb_r.shape)
-        #     r = np.concatenate((r, emb_r), axis=1)
-        #     print(emb_r.shape, r.shape)
-        # print(r.shape)
-        return current_embedddings
+        projections = []
+        for i in range(0, opts.num_relations):
+            emb_r = np.matmul(np.transpose(current_embedddings), R_matrices[i])
+            projections.append(emb_r)
+            #print (emb_r.shape)
+            #r = np.concatenate((r, emb_r), axis=1)
+            #print(emb_r.shape, r.shape)
+        #print(r.shape)
+        return (current_embedddings, projections)
         #return r
 
 def main(_):
@@ -346,7 +353,7 @@ def main(_):
         model = RLINE(options, session)
         if FLAGS.train:
             if FLAGS.order == 1:
-                emb_first = model.trainFirst()
+                (emb_first, projections) = model.trainFirst()
                 emb = emb_first
             elif FLAGS.order == 2:
                 batches_2nd_order = []
@@ -367,6 +374,16 @@ def main(_):
                     f.write(str(emb[i][j])+" ")
                 f.write("\n")
             f.close()
+
+            for r in range(0, options.num_relations):
+                f = open('linkedin.RLINE.'+model._idx2r[r]+'.emb.txt', 'w')
+                for i in range(0, options.num_nodes):
+                    f.write(str(model._idx2u[i])+" ")
+                    for j in range(0, len(emb[i])):
+                        f.write(str(projections[r][i][j])+" ")
+                    f.write("\n")
+                f.close()
+
 
 if __name__ == "__main__":
     tf.app.run()
