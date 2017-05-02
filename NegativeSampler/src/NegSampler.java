@@ -85,7 +85,7 @@ public class NegSampler {
 		AliasMethod am = new AliasMethod(degDist);
 		BufferedWriter bw = new BufferedWriter(new FileWriter(fileName));
 		ArrayList<Integer> tempList = new ArrayList<>();
-		for (int i = 0; i < numNodes; i++)
+		for (int i = 0; i < edges.size() ; i++)
 			tempList.add(i);
 
 		for (int b = 0; b < numBatches; b++) {
@@ -93,6 +93,7 @@ public class NegSampler {
 			int[] labels_batch = new int[batchSize * (1 + negSamplesPerBatch)];
 			String[] edges_batch = new String[batchSize * (1 + negSamplesPerBatch)];
 			Collections.shuffle(tempList);
+			// System.out.println(tempList);
 			ArrayList<Integer> edges_list = new ArrayList<Integer>(tempList.subList(0, batchSize));
 			int ctr = 0;
 			for (int i = 0; i < batchSize; i++) {
@@ -112,7 +113,7 @@ public class NegSampler {
 						edges_batch[ctr] = x + " " + neg_node;
 					else
 						edges_batch[ctr] = y + " " + neg_node;
-					
+
 					labels_batch[ctr] = -1;
 					ctr += 1;
 				}
@@ -144,7 +145,6 @@ public class NegSampler {
 		ns.readGraph(fileName);
 		ns.degreeDist = ns.getDegreeDist();
 		System.out.println(ns.edges.size());
-
 		ns.outputSamples(numBatches, batchSize, negSamplesPerBatch, "../../Batches_2nd.txt");
 	}
 

@@ -13,17 +13,17 @@ np.random.seed(0)
 flags = tf.app.flags
 
 flags.DEFINE_string("data_dir", 'Datasets/Linkedin', "data directory.")
-flags.DEFINE_integer("max_epoch", 2000, "max number of epochs.")
+flags.DEFINE_integer("max_epoch", 4000, "max number of epochs.")
 flags.DEFINE_integer("emb_dim", 128, "embedding dimension.")
 flags.DEFINE_integer("batch_size_first", 2000, "batch size of edges in 1st")
-flags.DEFINE_integer("batch_size_second", 100, "batch size of edges in 2nd") # this is the # positive examples per batch
-flags.DEFINE_integer("order", 1, "proximity to use") # if 3, use both.
+flags.DEFINE_integer("batch_size_second", 1000, "batch size of edges in 2nd") # this is the # positive examples per batch
+flags.DEFINE_integer("order", 2, "proximity to use") # if 3, use both.
 
 
 flags.DEFINE_integer("disp_freq", 100, "frequency to output.")
 flags.DEFINE_integer("save_freq", 10000, "frequency to save.")
-flags.DEFINE_float("lr", 0.025, "initial learning rate.")
-flags.DEFINE_float("number_neg_samples", 5, "# of negative samples per positive example")
+flags.DEFINE_float("lr", 0.01, "initial learning rate.")
+flags.DEFINE_float("number_neg_samples", 1, "# of negative samples per positive example")
 flags.DEFINE_boolean("reload_model", 0, "whether to reuse saved model.") # Note : this is for saved model
 flags.DEFINE_boolean("train", 1, "whether to train model.")
 
@@ -183,8 +183,8 @@ class LINE(object):
         print ("Starting training")
         for epoch in xrange(opts.max_epoch):
             #print ("Creating batch")
-            #(batch_edges , labels) = batches_2nd_order[epoch]
-            (batch_edges , labels) = self.createBatchSecondOrder()
+            (batch_edges , labels) = batches_2nd_order[epoch]
+            #(batch_edges , labels) = self.createBatchSecondOrder()
             #print ("Created batch")
             train_U = map(lambda x : x[0],batch_edges)
             train_V = map(lambda x : x[1],batch_edges)
@@ -255,13 +255,13 @@ def main(_):
                 emb = emb_first
             elif FLAGS.order == 2:
                 batches_2nd_order = []
-                #batches_2nd_order = model.readBatches()
+                batches_2nd_order = model.readBatches()
                 emb_second = model.trainSecond(batches_2nd_order)
                 emb = emb_second
             else:
                 emb_first = model.trainFirst()
                 batches_2nd_order = []
-                #batches_2nd_order = model.readBatches()
+                batches_2nd_order = model.readBatches()
                 emb_second = model.trainSecond(batches_2nd_order)
                 emb = np.concatenate((emb_first, emb_second), axis=1)
 
