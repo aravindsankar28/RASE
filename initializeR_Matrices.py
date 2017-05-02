@@ -9,6 +9,7 @@ import numpy as np
 import copy
 import math
 import json
+import pickle
 random.seed(0)
 np.random.seed(0)
 
@@ -65,6 +66,7 @@ class RLINE(object):
         self._line_embs = self._readInitialEmb("linkedin.LINE.emb.txt").astype(np.float32)
         self.buildGraph()
         self.buildGraphSecond()
+        self.regressionInitRMatrix()
 
         if options.reload_model:
             self.saver.restore(session, options.save_path)
@@ -215,24 +217,26 @@ class RLINE(object):
         self.saver = tf.train.Saver()
 
     def regressionInitRMatrix(self):
+        opts = self._options
         deepwalkEmb = tf.placeholder(tf.float32,[opts.num_nodes, opts.emb_dim])
-        U_batch = tf.placeholder(tf.int32,[len(self._network)])
-        V_batch = tf.placeholder(tf.int32,[len(self._network)])
-        edgeLabels =  tf.placeholder(tf.int32,[self.num_relations ,len(self._network)])
-        weights = tf.Variable(tf.random_uniform([opts.num_relations, opts.emb_dim], -0.1, 0.1), name="embedding_target")
-        embeddings_U = tf.nn.embedding_lookup(deepwalkEmb, U_batch)
-        embeddings_V = tf.nn.embedding_lookup(deepwalkEmb, V_batch)
-        embeddings_U = embeddings_U - embeddings_V
-        loss = tf.norm(edgeLabels - matmul(weights, np.transpose(deepwalkEmb))) + tf.norm(weights)
+        U_batch_full = tf.placeholder(tf.int32,[None])
+        V_batch_full = tf.placeholder(tf.int32,[None])
+        edgeLabels =  tf.placeholder(tf.float32,[1 ,None])
+        weights = tf.Variable(tf.random_uniform([1, opts.emb_dim], -0.1, 0.1), name="embedding_target")
+        embeddings_U = tf.nn.embedding_lookup(deepwalkEmb, U_batch_full)
+        embeddings_V = tf.nn.embedding_lookup(deepwalkEmb, V_batch_full)
+        embeddings_U = tf.abs(embeddings_U - embeddings_V)
+        loss = -tf.norm(tf.multiply(edgeLabels,tf.matmul(weights, tf.transpose(embeddings_U)))) + 500*tf.norm(weights)
         tvars = tf.trainable_variables()
         grads = tf.gradients(loss, tvars)
-        optimizer_linear_reg = tf.train.AdamOptimizer(opts.lr).apply_gradients(zip(grads, tvars))
+        optimizer_linear_reg = tf.train.AdamOptimizer(0.002).apply_gradients(zip(grads, tvars))
         self.optimizer_linear_reg = optimizer_linear_reg
-        self.U_batch_full = U_batch
-        self.V_batch_full = V_batch
+        self.U_batch_full = U_batch_full
+        self.V_batch_full = V_batch_full
         self.edgeLabels = edgeLabels
         self.weights = weights
         self.optimizer_linear_reg_loss = loss
+        self.deepwalkEmb = deepwalkEmb
         tf.global_variables_initializer().run()
 
     def trainSecond(self):
@@ -333,22 +337,56 @@ class RLINE(object):
         edgeLabels = np.zeros([opts.num_relations, len(self._network)])
         U_batch = []
         V_batch = []
-        for edge in self._network:
+        index = 0
+        for index in range(0, len(self._network)):
+            edge = self._network[index]
             U_batch.append(edge[0])
             V_batch.append(edge[1])
-            index = self._network.index(edge)
             rel = self._relations[index]
             for r in rel:
-                edgeLabels[r][index] = 1
-        n_iter = 0
-        for _ in xrange(opts.max_epoch):
-            self._session.run(self.optimizer_linear_reg, feed_dict={self.U_batch_full: U_batch, self.V_batch_full: V_batch, self.edgeLabels: edgeLabels})
-            n_iter+=1
-            print (n_iter)
-            if n_iter % opts.disp_freq == 0:
-                print(self._session.run(self.optimizer_linear_reg_loss, feed_dict={self.U_batch_full: U_batch, self.V_batch_full: V_batch, self.edgeLabels: edgeLabels}))
-        return self.weights
+                edgeLabels[r][index] = 1.0
 
+        n_iter = 0
+        weights_relations = []
+        for r in range(0, self._options.num_relations):
+            for _ in xrange(500):
+                #indices = np.random.permutation(len(self._network))[0:10000]
+                #U_batch_small = map(lambda x : U_batch[x], indices)
+                #V_batch_small = map(lambda x : V_batch[x], indices)
+                #edgeLabels_small = np.zeros([opts.num_relations, 10000])
+                #edgeLabels_small[r] = map(lambda x : edgeLabels[r][x], indices)
+                #self._session.run(self.optimizer_linear_reg, feed_dict={self.U_batch_full: U_batch_small, self.V_batch_full: V_batch_small, self.edgeLabels: np.array([edgeLabels_small[r]]), self.deepwalkEmb: self._line_embs})
+                self._session.run(self.optimizer_linear_reg, feed_dict={self.U_batch_full: U_batch, self.V_batch_full: V_batch, self.edgeLabels: np.array([edgeLabels[r]]), self.deepwalkEmb: self._line_embs})
+                n_iter+=1
+                #print (n_iter, self._session.run(self.optimizer_linear_reg_loss))
+                print(self._session.run(self.optimizer_linear_reg_loss, feed_dict={self.U_batch_full: U_batch, self.V_batch_full: V_batch, self.edgeLabels: np.array([edgeLabels[r]]), self.deepwalkEmb : self._line_embs}))
+                #if n_iter % opts.disp_freq == 0:
+                #    print(self._session.run(self.optimizer_linear_reg_loss, feed_dict={self.U_batch_full: U_batch, self.V_batch_full: V_batch, self.edgeLabels: edgeLabels}))
+            #return self.weights
+            #print (self.weights)
+            #print (self._session.run(self.weights))
+
+            wts = np.array(self._session.run(self.weights)[0])
+            wts /= np.max(np.abs(wts),axis=0)
+            weights_relations.append(wts)
+        weights_relations = np.array(weights_relations)
+        print (weights_relations.shape)
+        return weights_relations
+
+    def createRMatrixFromWts(self,weights_relations):
+        R_matrices = []
+        for r in range(0, self._options.num_relations):
+            R_matrix = np.zeros([self._options.emb_dim, self._options.emb_dim])
+            for i in range(0, self._options.emb_dim):
+                R_matrix[i][i] = weights_relations[r][i]
+            
+            for i in range(0, self._options.emb_dim):
+                for j in range(0, self._options.emb_dim):
+                    if i != j:
+                        R_matrix[i][j] = 1e-6
+            R_matrices.append(R_matrix)
+            #print (r, R_matrix)
+        return np.array(R_matrices)
     def trainFirst(self):
         opts = self._options
         n_iter = 0
@@ -415,6 +453,9 @@ def main(_):
         #     f.close()
         weights = model.trainRinit()
         print(np.shape(weights))
+        R_matrices = model.createRMatrixFromWts(weights)
+        pickle.dump( R_matrices, open( "R_matrices.p", "wb" ) )
+
 
 if __name__ == "__main__":
     tf.app.run()

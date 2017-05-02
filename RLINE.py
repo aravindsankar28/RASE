@@ -62,7 +62,7 @@ class RLINE(object):
         self._options.num_nodes = len(self._u2idx)
         self._options.num_relations = len(self._rtoidx)
         self._Pn = self._getDegreeDist() # This is actually d_v ^(0.75)
-        self._line_embs = self._readInitialEmb("linkedin.LINE.emb.txt").astype(np.float32)
+        self._line_embs = self._readInitialEmb("linkedin.deepwalk.emb.txt").astype(np.float32)
         self.buildGraph()
         self.buildGraphSecond()
 
@@ -83,7 +83,6 @@ class RLINE(object):
         for i in range(0, self._options.num_nodes):
             initialEmbs.append(user_embeddings[i])
         return np.array(initialEmbs)
-
 
     def _readFromFile(self, filename):
         edges = []
@@ -145,7 +144,7 @@ class RLINE(object):
         relation_labels = tf.placeholder(tf.int32, [opts.batch_size_first]) # relation labels
         embedding = tf.Variable(self._line_embs, name = "embedding")
         #embedding = tf.Variable(tf.random_uniform([opts.num_nodes, opts.emb_dim], -0.1, 0.1), name="embedding")
-        R_matrices = tf.Variable(tf.random_uniform([opts.num_relations, opts.relation_matrix_dim, opts.emb_dim], -1, 1), name="r_matrices")
+        R_matrices = tf.Variable(tf.random_uniform([opts.num_relations, opts.relation_matrix_dim, opts.emb_dim], -0.1, 0.1), name="r_matrices")
         embeddings_U = tf.nn.embedding_lookup(embedding, U_batch)
         embeddings_V = tf.nn.embedding_lookup(embedding, V_batch)
         R_matrix = tf.nn.embedding_lookup(R_matrices, relation_labels)
@@ -329,8 +328,8 @@ class RLINE(object):
                 self.saver.save(self._session, opts.save_path)
         current_embedddings = self._session.run(self.embedding)
         R_matrices = self._session.run(self.R_matrices)
-        r = current_embedddings
-        r = np.matmul(current_embedddings, np.transpose(R_matrices[0]))
+        #r = current_embedddings
+        #r = np.matmul(current_embedddings, np.transpose(R_matrices[0]))
         # print (r.shape)
         # for i in range(0, opts.num_relations):
         #     emb_r = np.matmul(current_embedddings, np.transpose(R_matrices[i]))
@@ -338,8 +337,8 @@ class RLINE(object):
         #     r = np.concatenate((r, emb_r), axis=1)
         #     print(emb_r.shape, r.shape)
         # print(r.shape)
-        # #return current_embedddings
-        return r
+        return current_embedddings
+        #return r
 
 def main(_):
     options = Options()
